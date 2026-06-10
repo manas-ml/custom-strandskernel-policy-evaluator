@@ -1,0 +1,9 @@
+# Core Strands agent framework
+strands-agents
+
+# AWS SDK — Bedrock runtime + default credential chain
+boto3
+
+# Microsoft agent-governance-toolkit (full extras: policy engine,
+# interceptors, event bus, drift detection)
+agent-governance-toolkit[full]

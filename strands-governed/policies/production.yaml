@@ -1,0 +1,77 @@
+# =============================================================================
+# Production governance policy for the read-only data-analyst Strands agent.
+#
+# Evaluated by the agent-governance-toolkit policy engine. Each rule is matched
+# against agent inputs (prompts) and tool-call arguments. Supported operators:
+#   - contains_any : true if ANY listed token appears (case-insensitive)
+#   - substring    : true if the exact substring appears
+#   - regex        : true if the regular expression matches
+#
+# Actions:
+#   - block : reject the request and raise a PolicyViolationError
+#   - audit : allow the request but emit an audit/violation event
+# =============================================================================
+version: "1.0"
+name: production-data-analyst-policy
+description: >-
+  Guardrails for a read-only Bedrock data-analyst agent. Blocks destructive
+  SQL, shell injection, prompt injection, and credential leakage; audits PII.
+
+rules:
+  # --- 1. Destructive SQL -----------------------------------------------------
+  - id: block-destructive-sql
+    description: Block destructive SQL operations against the data store.
+    operator: contains_any
+    values:
+      - "DROP TABLE"
+      - "DROP DATABASE"
+      - "TRUNCATE"
+      - "DELETE FROM"
+    case_sensitive: false
+    action: block
+    reason: "Destructive SQL detected — agent is read-only."
+
+  # --- 2. Shell injection -----------------------------------------------------
+  - id: block-shell-injection
+    description: Block shell command execution and injection attempts.
+    operator: contains_any
+    values:
+      - "rm -rf"
+      - "os.system"
+      - "subprocess"
+      - "/bin/sh"
+    case_sensitive: false
+    action: block
+    reason: "Shell execution / injection attempt detected."
+
+  # --- 3. PII detection (audit only) -----------------------------------------
+  - id: audit-ssn-pii
+    description: Detect US Social Security Numbers and log for audit.
+    operator: regex
+    pattern: '\b\d{3}-\d{2}-\d{4}\b'
+    action: audit
+    reason: "Possible SSN / PII detected — logged for compliance review."
+
+  # --- 4. Prompt injection ----------------------------------------------------
+  - id: block-prompt-injection
+    description: Block attempts to override the system prompt.
+    operator: substring
+    value: "IGNORE PREVIOUS INSTRUCTIONS"
+    case_sensitive: false
+    action: block
+    reason: "Prompt-injection / instruction-override attempt detected."
+
+  # --- 5. Credential leakage --------------------------------------------------
+  - id: block-credential-leak
+    description: Block prompts/arguments that embed credentials or secrets.
+    operator: regex
+    pattern: '(?i)(password\s*:|api[_-]?key\s*=|secret[_-]?key\s*=|bearer\s+[A-Za-z0-9._-]+)'
+    action: block
+    reason: "Credential / secret pattern detected."
+
+# --- Default behaviour when no rule matches -----------------------------------
+defaults:
+  action: allow
+  max_tool_calls: 10
+  timeout_seconds: 60
+  drift_threshold: 0.2
